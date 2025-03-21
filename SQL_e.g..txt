@@ -1,0 +1,147 @@
+Задача 1. Найдите самый популярный товар в сервисе (тот, который попал в заказы клиентов наибольшее количество раз).
+
+SELECT 
+product_id,
+COUNT(order_id) AS order_count
+FROM orders_product
+GROUP BY product_id 
+ORDER BY order_count DESC
+LIMIT 1
+;
+
+Задача 2. Найдите день, в который количество выполненных доставок в сервисе было максимальным за всё время работы сервиса.
+
+SELECT
+delivery_dt,
+COUNT(delivery_id) AS delivery_count
+FROM info
+WHERE is_completed_flg = 'True'
+GROUP BY delivery_dt
+ORDER BY delivery_count DESC
+LIMIT 1
+;
+
+Задача 3. Найдите день, в который количество выполненных доставок в сервисе было минимальным за всё время работы сервиса.
+
+SELECT
+delivery_dt,
+COUNT(delivery_id) AS delivery_count
+FROM info
+WHERE is_completed_flg = 'True'
+GROUP BY delivery_dt
+ORDER BY delivery_count ASC
+LIMIT 1
+;
+
+Задача 4. Посчитайте среднее время сессии пользователей в приложении в зависимости от используемого устройства в минутах.
+
+SELECT
+device_name,
+
+AVG(
+ TIMESTAMPDIFF(MINUTE, 
+  STR_TO_DATE(start_dttm, '%d.%m.%Y %H:%i:%s'), 
+  STR_TO_DATE(finish_dttm, '%d.%m.%Y %H:%i:%s'))) AS avg_sess_duration
+
+FROM app_sess
+GROUP BY device_name
+;
+
+Задача 5. Найдите максимальное количество различных товаров, добавленных в один заказ.
+
+SELECT
+COUNT(DISTINCT product_id) as uc_product
+FROM orders_product
+GROUP BY order_id
+ORDER BY uc_product DESC
+LIMIT 1
+;
+
+Задача 6. Подготовьте статистику по количеству незавершённых доставок по месяцам, начиная с 2022 года.
+
+SELECT
+YEAR(STR_TO_DATE(delivery_dt, '%d-%m-%Y')) as year_dl,
+MONTH(STR_TO_DATE(delivery_dt, '%d-%m-%Y')) as month_dl,
+COUNT(delivery_id) as dl_count
+FROM info
+WHERE is_completed_flg = 'False' AND YEAR(STR_TO_DATE(delivery_dt, '%d-%m-%Y')) >= 2022
+GROUP BY year_dl, month_dl
+ORDER BY year_dl ASC
+;
+
+Задача 7. Подготовьте статистику по количеству заказов в разрезе метода оплаты по годам за всё время работы сервиса
+
+SELECT
+YEAR(STR_TO_DATE(order_dt, '%d.%m.%Y')) as year_ord,
+payment_method,
+COUNT(order_id) as order_count
+FROM orders
+GROUP BY year_ord, payment_method
+ORDER BY year_ord
+;
+
+Задача 8. Найдите топ-10 клиентов, совершивших наибольшее количество заказов за всё время работы сервиса
+
+SELECT 
+customer_id,
+COUNT(order_id) as order_count
+FROM orders
+GROUP BY customer_id
+ORDER BY order_count DESC
+LIMIT 10
+;
+
+Задача 9. Найдите самые популярные категории товаров (product_group_name) среди пользователей различных возрастных групп:
+18–30 лет;
+30–45 лет;
+45–60 лет;
+60+ лет.
+
+WITH customer_age AS (
+ SELECT 
+ customer_id,
+ CASE
+  WHEN TIMESTAMPDIFF(YEAR, STR_TO_DATE(birth_dt, '%d.%m.%Y'), NOW()) >= 60 THEN "60+"
+  WHEN TIMESTAMPDIFF(YEAR, STR_TO_DATE(birth_dt, '%d.%m.%Y'), NOW()) >= 45 AND TIMESTAMPDIFF(YEAR, STR_TO_DATE(birth_dt, '%d.%m.%Y'), NOW()) < 60 THEN "45-60"
+  WHEN TIMESTAMPDIFF(YEAR, STR_TO_DATE(birth_dt, '%d.%m.%Y'), NOW()) >= 30 AND TIMESTAMPDIFF(YEAR, STR_TO_DATE(birth_dt, '%d.%m.%Y'), NOW()) < 45 THEN "30-45"
+  WHEN TIMESTAMPDIFF(YEAR, STR_TO_DATE(birth_dt, '%d.%m.%Y'), NOW()) >= 18 AND TIMESTAMPDIFF(YEAR, STR_TO_DATE(birth_dt, '%d.%m.%Y'), NOW()) < 30 THEN "18-30"
+  ELSE "0"
+ END AS age_group
+ FROM customers
+ WHERE customer_id != 0
+)
+
+SELECT 
+ca.age_group,
+pr_gr.product_group_name,
+COUNT(pr_gr.product_group_name) as gr_count
+FROM customer_age AS ca
+INNER JOIN orders AS t1
+ON ca.customer_id = t1.customer_id 
+INNER JOIN orders_product AS t2
+ON t1.order_id = t2.order_id
+INNER JOIN products AS pr_gr
+ON t2.product_id = pr_gr.product_id
+GROUP BY ca.age_group, pr_gr.product_group_name
+ORDER BY ca.age_group, gr_count DESC
+;
+
+Задача 10. Найдите товар, который клиенты чаще всего заказывают совместно с [товаром X].
+
+WITH lead_prod_by_order as (
+SELECT 
+pr.product_name,
+lead(pr.product_name) OVER(PARTITION BY op.order_id order by op.amount desc) as lead_prod
+FROM orders_product as op
+INNER JOIN products as pr
+ON op.product_id = pr.product_id
+)
+
+SELECT product_name, 
+lead_prod,
+COUNT(*) AS pair_count
+FROM lead_prod_by_order
+WHERE lead_prod is not NULL
+GROUP BY product_name, lead_prod
+ORDER BY product_name, pair_count DESC
+;
